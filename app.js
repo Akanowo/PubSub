@@ -5,6 +5,7 @@ const http = require('http');
 const faye = require('faye');
 const debug = require('debug')('app:home');
 const path = require('path');
+const socket = require('socket.io');
 
 const app = express();
 const bayeux = new faye.NodeAdapter({ mount: '/faye', timeout: 45 });
@@ -13,17 +14,20 @@ const events = [];
 // Configurations
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use('/js', express.static(path.join(__dirname, 'node_modules')));
 
 
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/public/index.html');
+  res.sendFile(__dirname + '/index.html');
 });
 
 // Events endpoints
 app.get('/events', (req, res) => {
-  if (!process.env.CLIENT || !process.env.TOPIC) {
+  if (!process.env.CLIENT || !process.env.CLIENTSUBSCRIPTION) {
+    debug(process.env.CLIENT);
+    debug(process.env.CLIENTSUBSCRIPTION);
+    debug(process.env.STATUS);
     return res.json({
       status: 'unsuscribed',
       message: 'Subscribe first by making a post request to http://localhost:8080/subscribe/{TOPIC}'
@@ -34,16 +38,18 @@ app.get('/events', (req, res) => {
     return res.json({
       status: process.env.STATUS,
       userId: process.env.CLIENT,
-      topic: process.env.TOPIC,
+      clientSubscription: process.env.CLIENTSUBSCRIPTION,
       publishedEvents: events
     });
   }
 
   if (process.env.STATUS === 'published') {
+    debug('Topic: ' + process.env.TOPIC);
     return res.json({
       status: process.env.STATUS,
       userId: process.env.CLIENT,
       topic: process.env.TOPIC,
+      clientSubscription: process.env.CLIENTSUBSCRIPTION,
       publishedEvents: events
     });
   }
@@ -69,24 +75,23 @@ app.post('/subscribe/:topic', (req, res) => {
     });
   }
 
-  // Listen for subscription
-  bayeux.on('subscribe', function (client) {
-    debug('Client: ' + client);
+  bayeux.on('subscription', function (client) {
     // Set environment variables
-    process.env.CLIENT = client;
-    process.env.TOPIC = topic;
+    process.env.CLIENT = client.trim();
+    process.env.CLIENTSUBSCRIPTION = topic.trim();
     process.env.STATUS = 'subscribed';
   });
 
-  return bayeux.getClient().subscribe(`/topic/${topic}`)
-    .then(() => {
-      return res.redirect('/events');
-    }).catch((err) => {
-      return res.status(400).json({
-        status: 'failed',
-        error: err
-      });
+
+  return bayeux.getClient().subscribe(`/topic/${topic}`).then(() => {
+    return res.redirect('/events');
+  }).catch((err) => {
+    return res.json({
+      status: 'failed',
+      message: 'Subscription unsuccessful',
+      error: err
     });
+  });
 });
 
 // Publish endpoint
@@ -104,18 +109,18 @@ app.post('/publish/:topic', (req, res) => {
   // Listen for publishing
   bayeux.on('publish', () => {
     process.env.STATUS = 'published';
-    process.env.TOPIC = topic;
   });
 
   // Push message to events array
-  events.push(req.body.message);
+  events.push({topic, event: req.body.message});
 
   // Send response
-  return bayeux.getClient().publish(`/topic/${topic}`, events).then(() => {
+  return bayeux.getClient().publish(`/topic/${topic}`, { event: req.body.message }).then(() => {
     return res.redirect('/events');
   }).catch((err) => {
-    res.json({
-      status: 'Failed',
+    return res.json({
+      status: 'failed',
+      message: 'Publish unsuccessful',
       error: err
     });
   });
@@ -126,6 +131,42 @@ const server = http.createServer(app);
 
 // Connect Faye with server
 bayeux.attach(server);
+
+// Connect socket.io with server
+const io = socket(server);
+
+io.on('connection', (client) => {
+  debug('A user connected', client.id);
+
+  // Listen for subscription
+  bayeux.on('subscribe', (id, channel) => {
+    process.env.CLIENTSUBSCRIPTION = channel;
+    process.env.CLIENT = id;
+    process.env.STATUS = 'subscribed';
+    io.emit('subscription', {
+      status: 'subscribed',
+      userId: id,
+      clientSubscription: channel,
+      publishedEvents: events
+    });
+  });
+
+  // Listen for publishing
+  bayeux.on('publish', (id, channel, data) => {
+    process.env.CLIENT = id;
+    process.env.TOPIC = channel;
+    process.env.STATUS = 'published';
+    io.emit('publish', {
+      status: 'published',
+      userId: id,
+      topic: channel,
+      clientSubscription: process.env.CLIENTSUBSCRIPTION,
+      data,
+      publishedEvents: events
+    });
+    
+  });
+});
 
 // Listen on port 8080
 server.listen(8080, () => {

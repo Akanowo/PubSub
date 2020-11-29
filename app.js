@@ -30,7 +30,7 @@ app.get('/events', (req, res) => {
     debug(process.env.STATUS);
     return res.json({
       status: 'unsuscribed',
-      message: 'Subscribe first by making a post request to http://localhost:8080/subscribe/{TOPIC}'
+      message: 'Head over to http://localhost:8080 first and make a subscription to the endpoint /subscribe/{TOPIC_NAME}'
     });
   }
 
@@ -82,7 +82,7 @@ app.post('/subscribe/:topic', (req, res) => {
     process.env.STATUS = 'subscribed';
   });
 
-
+// Return subscription
   return bayeux.getClient().subscribe(`/topic/${topic}`).then(() => {
     return res.redirect('/events');
   }).catch((err) => {
@@ -135,14 +135,17 @@ bayeux.attach(server);
 // Connect socket.io with server
 const io = socket(server);
 
+// Listen for socket connections and events
 io.on('connection', (client) => {
   debug('A user connected', client.id);
 
   // Listen for subscription
   bayeux.on('subscribe', (id, channel) => {
+    // Set environment variables
     process.env.CLIENTSUBSCRIPTION = channel;
     process.env.CLIENT = id;
     process.env.STATUS = 'subscribed';
+    // Emit socket
     io.emit('subscription', {
       status: 'subscribed',
       userId: id,
@@ -153,9 +156,11 @@ io.on('connection', (client) => {
 
   // Listen for publishing
   bayeux.on('publish', (id, channel, data) => {
+    // Set environment variables
     process.env.CLIENT = id;
     process.env.TOPIC = channel;
     process.env.STATUS = 'published';
+    // Emit sockets
     io.emit('publish', {
       status: 'published',
       userId: id,

@@ -1,7 +1,7 @@
-# PUB/SUB SYSTEM
+# PUBLISH/SUBSCRIBE SYSTEM
 
 # Introduction
-This API system was built using the Express framework of Node.js, Faye and Socket.io
+This API system was built using the Express framework of Node.js.
 
 # Requirement
 Make sure Node.js is installed on your computer. Download it here: https://nodejs.org/en/download/

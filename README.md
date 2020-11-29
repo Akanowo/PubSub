@@ -15,7 +15,7 @@ Make sure Node.js is installed on your computer. Download it here: https://nodej
 # API DOCS
 ### Create a subscription
 1. Head over to http://locahost:8080
-2. Make a post request using Curl or Postman to /subscribe/{TOPIC} with url:http://localhost:8080/events as the body of the request.
+2. Make a post request using Curl or Postman to /subscribe/{TOPIC} with {url:"http://localhost:8080/events"} as the body of the request.
 3. You can head over to http://localhost:8080/events on a seperate tab to verify your subscription was successful.
 
 ### Publish a message.
